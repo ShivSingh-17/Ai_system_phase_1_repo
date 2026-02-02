@@ -19,6 +19,17 @@ MODEL_PATH = os.path.join(BASE_DIR, "model", "Core_Model_1.pt")
 st.set_page_config(layout="wide")
 st.title("AI Video Entry / Exit Dashboard")
 
+# ================= RTSP SETTINGS (NEW) =================
+st.sidebar.header("Camera Settings")
+
+rtsp_url = st.sidebar.text_input(
+    "RTSP URL",
+    value="rtsp://admin:Shiv%401711@192.168.137.12:554/stream1"
+)
+
+use_rtsp = st.sidebar.checkbox("Use RTSP Camera", value=True)
+# =======================================================
+
 # ---------------- SESSION STATE ----------------
 if "detector" not in st.session_state:
     st.session_state.detector = YOLODetector(MODEL_PATH)
@@ -33,7 +44,16 @@ if "last_recog_time" not in st.session_state:
     st.session_state.last_recog_time = {}
 # ------------------------------------------------
 
-cap = cv2.VideoCapture(0)
+# ================= CAMERA INIT (EDITED) =================
+if use_rtsp and rtsp_url.strip() != "":
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+else:
+    cap = cv2.VideoCapture(0)
+
+# RTSP tuning (important for IP cameras)
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+cap.set(cv2.CAP_PROP_FPS, 15)
+# ========================================================
 
 frame_box = st.empty()
 col1, col2 = st.columns(2)
@@ -41,11 +61,15 @@ col1, col2 = st.columns(2)
 entry_placeholder = col1.empty()
 exit_placeholder = col2.empty()
 
-
 while True:
     ret, frame = cap.read()
+    for _ in range(2):   # drop 2 old frames
+        cap.grab()
+
     if not ret:
-        break
+        st.warning("⚠️ Waiting for camera stream...")
+        time.sleep(1)
+        continue
 
     frame = cv2.resize(frame, (640, 480))
 
