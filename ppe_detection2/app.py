@@ -1,16 +1,16 @@
 
 
 
-# app.py
-
 import streamlit as st
 import cv2
 import time
 
 from core.detector import PPEDetector
+from core.tracker import Tracker
+from core.face_recognizer import FaceRecognizer
+from core.identity_cache import IdentityCache
+from core.identity_logic import IdentityLogic
 from core.logic import PPELogic
-
-# ---------------- CONFIG ---------------- #
 
 MODEL_PATH = "models/ppe_best.pt"
 
@@ -21,92 +21,95 @@ CLASS_NAMES = {
     3: "boots"
 }
 
-# ---------------------------------------- #
-
 st.set_page_config(layout="wide")
-st.title("🦺 PPE Detection Dashboard")
+st.title("PPE + Identity Monitoring")
 
-video_path = st.text_input("Enter RTSP / Video Path")
-
+rtsp = st.text_input("RTSP / Video Path")
 run = st.button("Start Monitoring")
 
 frame_window = st.empty()
 
-if run and video_path:
+if run and rtsp:
 
-    # 🔧 RTSP buffer optimization
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+    cap = cv2.VideoCapture(rtsp)
 
     detector = PPEDetector(MODEL_PATH)
-    logic = PPELogic()
+    tracker = Tracker()
 
-    frame_count = 0
-    SKIP_FRAMES = 2   # 🔥 FPS boost
+    recognizer = FaceRecognizer(
+        "face_database/face_embeddings.pkl"
+    )
 
-    while True:
+    cache = IdentityCache()
+    identity_logic = IdentityLogic(recognizer, cache)
+    ppe_logic = PPELogic()
+
+    prev_time = 0
+
+    while cap.isOpened():
 
         ret, frame = cap.read()
         if not ret:
             break
 
-        # 🔧 Resize frame (huge FPS gain)
-        frame = cv2.resize(frame, (640, 480))
-
-        frame_count += 1
-
-        # 🔧 Skip frames
-        if frame_count % SKIP_FRAMES != 0:
-            frame_window.image(frame, channels="BGR")
+        # -------- FPS CONTROL -------- #
+        if time.time() - prev_time < 0.1:
             continue
+        prev_time = time.time()
 
-        detections = detector.detect(frame)
+        frame = cv2.resize(frame, (960,540))
 
-        detected_items = []
+        persons = detector.detect_persons(frame)
+        ppe_items = detector.detect_ppe(frame)
 
-        for det in detections:
+        tracks = tracker.update(persons)
 
-            cls_name = CLASS_NAMES[det["class_id"]]
-            detected_items.append(cls_name)
+        for track in tracks:
 
-            x1, y1, x2, y2 = map(int, det["bbox"])
+            track_id = track["id"]
+            x1,y1,x2,y2 = map(int, track["bbox"])
 
-            cv2.rectangle(frame,
-                          (x1, y1),
-                          (x2, y2),
-                          (0, 255, 0),
-                          2)
+            # -------- FACE CROP -------- #
+            face_crop = frame[
+                y1:int(y1+(y2-y1)*0.3),
+                x1:x2
+            ]
 
-            cv2.putText(frame,
-                        cls_name,
-                        (x1, y1 - 10),
+            name = identity_logic.update(
+                track_id,
+                face_crop
+            )
+
+            detected_items = []
+
+            # -------- PPE INSIDE PERSON -------- #
+            for item in ppe_items:
+
+                ix1,iy1,ix2,iy2 = map(int,item["bbox"])
+
+                if ix1 > x1 and ix2 < x2 and iy1 > y1 and iy2 < y2:
+                    detected_items.append(
+                        CLASS_NAMES[item["class_id"]]
+                    )
+
+            status, missing = ppe_logic.update(
+                track_id,
+                detected_items
+            )
+
+            label = f"{name} | PPE OK"
+            color = (0,255,0)
+
+            if not status:
+                label = f"{name} Missing: {missing}"
+                color = (0,0,255)
+
+            cv2.rectangle(frame,(x1,y1),(x2,y2),color,2)
+            cv2.putText(frame,label,(x1,y1-10),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        (0, 255, 0),
-                        2)
-
-        # PPE Logic Check
-        status, missing = logic.update(0, detected_items)
-
-        if status is False:
-            cv2.putText(frame,
-                        f"ALERT Missing: {missing}",
-                        (50, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (0, 0, 255),
-                        3)
+                        0.6,color,2)
 
         frame_window.image(frame, channels="BGR")
 
-        # 🔧 Small delay for UI smoothness
-        time.sleep(0.01)
-
     cap.release()
-
-
-
-
-
-
 

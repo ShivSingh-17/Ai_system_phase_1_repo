@@ -5,71 +5,36 @@
 
 import time
 
-
 class PPELogic:
 
-    def __init__(self, alert_delay=5):
+    REQUIRED = ["helmet", "gloves", "vest", "boots"]
 
-        # Required PPE items
-        self.required_items = {
-            "helmet",
-            "gloves",
-            "vest",
-            "boots"
-        }
+    def __init__(self):
 
-        # Track person PPE history
-        self.track_history = {}
-
-        # Alert delay (seconds)
-        self.alert_delay = alert_delay
-
-    # ------------------------------------------------ #
+        self.history = {}
 
     def update(self, track_id, detected_items):
 
-        """
-        track_id : person id
-        detected_items : list of detected PPE items
-        """
+        now = time.time()
 
-        current_time = time.time()
+        if track_id not in self.history:
+            self.history[track_id] = now
 
-        detected_set = set(detected_items)
+        missing = [
+            item for item in self.REQUIRED
+            if item not in detected_items
+        ]
 
-        missing_items = self.required_items - detected_set
-
-        # First time seeing this person
-        if track_id not in self.track_history:
-
-            self.track_history[track_id] = {
-                "first_seen": current_time,
-                "last_missing": missing_items
-            }
-
+        if not missing:
+            self.history[track_id] = now
             return True, []
 
-        history = self.track_history[track_id]
+        elapsed = now - self.history[track_id]
 
-        # If PPE complete
-        if len(missing_items) == 0:
+        if elapsed >= 5:
+            return False, missing
 
-            # Reset timer
-            history["first_seen"] = current_time
-            history["last_missing"] = set()
-
-            return True, []
-
-        # PPE Missing → check delay
-        time_elapsed = current_time - history["first_seen"]
-
-        if time_elapsed >= self.alert_delay:
-
-            return False, list(missing_items)
-
-        else:
-
-            return True, list(missing_items)
+        return True, []
 
 
 

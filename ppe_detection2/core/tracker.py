@@ -1,22 +1,38 @@
 
 
 
+# core/tracker.py
+
 import numpy as np
 
-class CentroidTracker:
-    def __init__(self, max_distance=60):
+class Tracker:
+
+    def __init__(self):
+
         self.next_id = 0
         self.objects = {}
 
-    def update(self, boxes):
-        new_objects = {}
+    def _get_centroid(self, bbox):
 
-        for (x1, y1, x2, y2) in boxes:
-            cx = int((x1+x2)/2)
-            cy = int((y1+y2)/2)
+        x1, y1, x2, y2 = bbox
+        return int((x1+x2)/2), int((y1+y2)/2)
 
-            new_objects[self.next_id] = (cx, cy)
+    def update(self, detections):
+
+        tracks = []
+
+        for det in detections:
+
+            centroid = self._get_centroid(det["bbox"])
+
+            track_id = self.next_id
+            self.objects[track_id] = centroid
             self.next_id += 1
 
-        self.objects = new_objects
-        return self.objects
+            tracks.append({
+                "id": track_id,
+                "bbox": det["bbox"]
+            })
+
+        return tracks
+

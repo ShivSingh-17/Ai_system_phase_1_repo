@@ -1,31 +1,46 @@
 
 
 
+# core/face_recognizer.py
+
 import pickle
 import numpy as np
 from deepface import DeepFace
 
-with open("face_database/face_embeddings.pkl", "rb") as f:
-    FACE_DB = pickle.load(f)
+class FaceRecognizer:
 
-def cosine(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    def __init__(self, embedding_path):
 
-def recognize(face_img):
-    rep = DeepFace.represent(
-        face_img,
-        model_name="Facenet",
-        enforce_detection=False
-    )[0]["embedding"]
+        with open(embedding_path, "rb") as f:
+            self.database = pickle.load(f)
 
-    best_name = "Unknown"
-    best_score = 0
+    def recognize(self, face_img):
 
-    for name, emb_list in FACE_DB.items():
-        for emb in emb_list:
-            score = cosine(rep, emb)
-            if score > 0.45 and score > best_score:
-                best_name = name
-                best_score = score
+        try:
 
-    return best_name
+            embedding = DeepFace.represent(
+                face_img,
+                model_name="Facenet",
+                enforce_detection=False
+            )[0]["embedding"]
+
+            best_match = None
+            best_distance = 999
+
+            for name, db_emb in self.database.items():
+
+                dist = np.linalg.norm(
+                    np.array(embedding) - np.array(db_emb)
+                )
+
+                if dist < best_distance:
+                    best_distance = dist
+                    best_match = name
+
+            if best_distance < 0.8:
+                return best_match
+
+            return "Unknown"
+
+        except:
+            return "Unknown"

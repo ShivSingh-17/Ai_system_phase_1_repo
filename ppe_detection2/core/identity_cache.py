@@ -1,28 +1,22 @@
 
 
 
-from collections import defaultdict, Counter
-
-from collections import defaultdict, Counter
+# core/identity_cache.py
 
 class IdentityCache:
-    def __init__(self, confirm_frames=1):
-        self.locked = {}
-        self.votes = defaultdict(list)
+
+    def __init__(self):
+
+        self.cache = {}
 
     def update(self, track_id, name):
 
-        if track_id in self.locked:
-            return self.locked[track_id]
+        self.cache[track_id] = name
 
-        if name == "Unknown":
-            return "Unknown"
+    def get(self, track_id):
 
-        self.votes[track_id].append(name)
+        return self.cache.get(track_id, "Unknown")
 
-        if len(self.votes[track_id]) >= 1:
-            final = Counter(self.votes[track_id]).most_common(1)[0][0]
-            self.locked[track_id] = final
-            return final
+    def exists(self, track_id):
 
-        return "Detecting..."
+        return track_id in self.cache
