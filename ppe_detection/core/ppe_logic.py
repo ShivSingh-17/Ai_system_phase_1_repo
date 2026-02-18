@@ -1,50 +1,56 @@
 
 
 
-# core/ppe_detector.py
+# core/ppe_logic.py
 
-from ultralytics import YOLO
-import cv2
+import time
 
 
-class PPEDetector:
-    def __init__(self, model_path):
-        self.model = YOLO(model_path)
+REQUIRED_PPE = ["helmet", "gloves", "vest", "boots"]
 
-        # PPE classes mapping
-        self.class_names = {
-            0: "helmet",
-            1: "gloves",
-            2: "vest",
-            3: "boots"
-        }
 
-    def detect(self, frame):
+class PPELogic:
 
-        results = self.model(frame, conf=0.4, iou=0.5)[0]
+    def __init__(self, alert_delay=5):
 
-        detections = []
+        self.alert_delay = alert_delay
 
-        if results.boxes is None:
-            return detections
+        # track_id → first missing time
+        self.missing_timer = {}
 
-        boxes = results.boxes.xyxy.cpu().numpy()
-        scores = results.boxes.conf.cpu().numpy()
-        class_ids = results.boxes.cls.cpu().numpy().astype(int)
+    def check_ppe(self, track_id, detected_items):
 
-        for box, score, cid in zip(boxes, scores, class_ids):
+        missing_items = [
+            item for item in REQUIRED_PPE
+            if item not in detected_items
+        ]
 
-            if cid not in self.class_names:
-                continue
+        current_time = time.time()
 
-            x1, y1, x2, y2 = map(int, box)
+        # If PPE complete
+        if len(missing_items) == 0:
 
-            detections.append({
-                "bbox": (x1, y1, x2, y2),
-                "confidence": float(score),
-                "class_id": cid,
-                "label": self.class_names[cid]
-            })
+            if track_id in self.missing_timer:
+                del self.missing_timer[track_id]
 
-        return detections
+            return {
+                "status": "complete",
+                "missing": []
+            }
+
+        # PPE incomplete
+        if track_id not in self.missing_timer:
+            self.missing_timer[track_id] = current_time
+            return None
+
+        elapsed = current_time - self.missing_timer[track_id]
+
+        if elapsed >= self.alert_delay:
+            return {
+                "status": "incomplete",
+                "missing": missing_items
+            }
+
+        return None
+
 
